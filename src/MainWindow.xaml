@@ -1,0 +1,33 @@
+﻿<Window x:Class="WireboyPlayer.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:WireboyPlayer"
+        mc:Ignorable="d"
+        Title="wireboy流媒体播放器" Height="540" Width="800">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="70"/>
+            <RowDefinition/>
+        </Grid.RowDefinitions>
+        <Grid Margin="10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBox x:Name="text_url"  Margin="10" Text="http://ivi.bupt.edu.cn/hls/cctv6hd.m3u8" VerticalContentAlignment="Center"></TextBox>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="0" FlowDirection="RightToLeft">
+                <CheckBox Content="显示日志" VerticalAlignment="Center" Checked="CheckBox_Checked" Unchecked="CheckBox_Unchecked" FlowDirection="LeftToRight"></CheckBox>
+                <Button Width="100" Margin="10" Content="开启直播模式" Visibility="Collapsed" Click="Button_Click_1" x:Name="btn_mode"></Button>
+                <Button Width="100" Margin="10" Content="播放" Click="Button_Click" x:Name="btn_Play"></Button>
+            </StackPanel>
+        </Grid>
+        <StackPanel Orientation="Horizontal" Margin="10">
+        </StackPanel>
+        <TextBox Grid.Row="1" x:Name="logBox" Margin="10" Visibility="Hidden" VerticalScrollBarVisibility="Auto"></TextBox>
+        <Image Grid.Row="1" x:Name="player" Source="{Binding PlayerImage}" Margin="10">
+
+        </Image>
+    </Grid>
+</Window>
