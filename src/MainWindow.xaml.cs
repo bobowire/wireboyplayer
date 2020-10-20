@@ -21,6 +21,8 @@ using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
 using NAudio.Wave;
+using System.Diagnostics;
+using System.Collections.ObjectModel;
 
 namespace WireboyPlayer
 {
@@ -79,7 +81,15 @@ namespace WireboyPlayer
         {
             if (btn_Play.Content.ToString() == "播放")
             {
-                string url = text_url.Text;
+                string url = "";
+                if (text_url.SelectedItem == null)
+                {
+                    url = text_url.Text;
+                }
+                else
+                {
+                    url = text_url.SelectedValue.ToString();
+                }
                 btn_Play.Content = "停止";
                 Task.Factory.StartNew(() =>
                 {
@@ -144,6 +154,42 @@ namespace WireboyPlayer
             set { Set(value); }
             get { return Get<BitmapSource>(); }
         }
+
+        public ObservableCollection<RtmpUrlModel> RtmpUrls
+        {
+            set { Set(value); }
+            get { return Get<ObservableCollection<RtmpUrlModel>>(); }
+        }
+
+        public MainWindowViewModel()
+        {
+            RtmpUrls = new ObservableCollection<RtmpUrlModel>();
+            RtmpUrls.Add(new RtmpUrlModel()
+            {
+                url = "rtmp://58.200.131.2:1935/livetv/hunantv",
+                name = "湖南卫视"
+            });
+            RtmpUrls.Add(new RtmpUrlModel()
+            {
+                url = "http://ivi.bupt.edu.cn/hls/cctv6hd.m3u8",
+                name = "CCTV6 - 电影频道"
+            });
+        }
+
+    }
+
+    public class RtmpUrlModel : PropertyStore
+    {
+        public string url
+        {
+            set { Set(value); }
+            get { return Get<string>(); }
+        }
+        public string name
+        {
+            set { Set(value); }
+            get { return Get<string>(); }
+        }
     }
 
     internal class PlayerHelper
@@ -154,7 +200,7 @@ namespace WireboyPlayer
         int currentGuid = 0;
         public void Start(Action<int, int, byte[], int, bool> action, string url)
         {
-            playStatusCallback(true);
+            //playStatusCallback(true);
             currentGuid += 1;
             this.url = url;
             callBack = action;
@@ -170,20 +216,24 @@ namespace WireboyPlayer
 
             Console.WriteLine("Decoding...");
             bool isError = false;
+            int errorTime = 0;
             do
             {
+                if (errorTime > 3) break;
                 isError = false;
                 try
                 {
                     DecodeAllFramesToImages(deviceType);
+                    errorTime = 0;
                 }
                 catch (Exception ex)
                 {
                     Console.WriteLine($"播放异常:{ex}");
                     isError = true;
+                    errorTime++;
                 }
             } while (isError);
-            playStatusCallback(false);
+            //playStatusCallback(false);
 
             //Console.WriteLine("Encoding...");
             //EncodeImagesToH264();
@@ -259,8 +309,12 @@ namespace WireboyPlayer
         List<VideoSt> frames = new List<VideoSt>();
         List<AudioSt> audioFrames = new List<AudioSt>();
         int TempBufferSize = 12;
+        bool isWait = true;
         private unsafe void DecodeAllFramesToImages(AVHWDeviceType HWDevice)
         {
+            isWait = true;
+            frames.Clear();
+            audioFrames.Clear();
             // decode all frames from url, please not it might local resorce, e.g. string url = "../../sample_mpeg4.mp4";
             //var url = "http://clips.vorwaerts-gmbh.de/big_buck_bunny.mp4"; // be advised this file holds 1440 frames
             //var url = "rtmp://58.200.131.2:1935/livetv/hunantv";
@@ -287,6 +341,7 @@ namespace WireboyPlayer
                     using (AudioFrameConverter afc = new AudioFrameConverter(vsd.in_sample_fmt, vsd.in_sample_rate, vsd.in_channels))
                     {
                         naudioInit(vsd.in_sample_rate, vsd.in_channels);
+                        Stopwatch stopwatch = new Stopwatch();
                         while (vsd.TryDecodeNextFrame(out var frame, out bool isVideo))
                         {
                             if (curGuid != currentGuid) break;
@@ -300,6 +355,7 @@ namespace WireboyPlayer
                                         Thread.Sleep(1);
                                     }
                                 }
+                                //stopwatch.Start();
                                 AVFrame convertedFrame = vfc.Convert(frame);
                                 int length = convertedFrame.height * convertedFrame.linesize[0];
                                 byte[] managedArray = IntPrtToBytes((IntPtr)convertedFrame.data[0], length);
@@ -311,6 +367,10 @@ namespace WireboyPlayer
                                     stride = convertedFrame.linesize[0]
                                 };
                                 frames.Add(st);
+                                if (frames.Count >= TempBufferSize) isWait = false;
+                                //stopwatch.Stop();
+                                //Console.WriteLine($"解析时间：{stopwatch.ElapsedMilliseconds}毫秒");
+                                //stopwatch.Reset();
                             }
                             else
                             {
@@ -374,32 +434,54 @@ namespace WireboyPlayer
                 byte[] byteZero = new byte[0];
                 int dropFrameTime = 0;
                 double perFrameTime = 1000 / fps;
+                Stopwatch stopwatch = new Stopwatch();
                 while (curGuid == currentGuid)
                 {
+                    stopwatch.Start();
                     VideoSt frameData = null;
-                    while (lasthandleTime.AddMilliseconds(perFrameTime) > DateTime.Now)
+                    lasthandleTime = lasthandleTime.AddMilliseconds(perFrameTime);
+                    bool isReCalcTime = false;
+                    //时间没到时，等待
+                    while (lasthandleTime > DateTime.Now || isWait)
                     {
                         if (curGuid != currentGuid) break;
                         Thread.Sleep(1);
+                        if (isWait)
+                        {
+                            lasthandleTime = DateTime.Now.AddMilliseconds(perFrameTime);
+                            if (!isReCalcTime)
+                            {
+                                Console.WriteLine("重新计算播放时间");
+                                isReCalcTime = true;
+                            }
+                        }
                     }
-
                     if (curGuid != currentGuid) break;
                     if (frames.Count > 0)
                     {
-                        while (frames.Count > TempBufferSize)
-                        {
-                            Console.WriteLine($"主动丢帧:{dropFrameTime}");
-                            frames.RemoveAt(0);
-                        }
+                        //while (frames.Count > TempBufferSize)
+                        //{
+                        //    Console.WriteLine($"主动丢帧:{dropFrameTime}");
+                        //    frames.RemoveAt(0);
+                        //}
                         frameData = frames[0];
                         frames.RemoveAt(0);
                     }
+                    if (frames.Count <= 1) isWait = true;
                     if (frameData != null)
                     {
+                        //Console.WriteLine($"length:{frameData.data.Count()}");
                         callBack(frameData.width, frameData.height, frameData.data, frameData.stride, false);
                         frameData = null;
                     }
-                    lasthandleTime = lasthandleTime.AddMilliseconds(perFrameTime);
+
+                    stopwatch.Stop();
+                    if (stopwatch.ElapsedMilliseconds == 0)
+                    {
+                        Console.WriteLine($"{lasthandleTime:mm:ss:ffff} -> {DateTime.Now:mm:ss:ffff}");
+                        Console.WriteLine($"解析时间：{stopwatch.ElapsedMilliseconds}毫秒 wait:{isWait}");
+                    }
+                    stopwatch.Reset();
                 }
             });
         }
@@ -411,8 +493,11 @@ namespace WireboyPlayer
                 DateTime lasthandleTime = DateTime.Now;
                 while (curGuid == currentGuid)
                 {
+                    do
+                    {
+                        Thread.Sleep(1);
+                    } while (isWait);
                     AudioSt frameData = null;
-                    Thread.Sleep(1);
                     if (curGuid != currentGuid) break;
                     lasthandleTime = DateTime.Now;
                     if (audioFrames.Count > 0)

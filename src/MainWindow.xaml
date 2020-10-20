@@ -8,25 +8,26 @@
         Title="wireboy流媒体播放器" Height="540" Width="800">
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="70"/>
+            <RowDefinition Height="35"/>
             <RowDefinition/>
         </Grid.RowDefinitions>
-        <Grid Margin="10">
+        <Grid Margin="5 5 5 0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="auto"/>
             </Grid.ColumnDefinitions>
-            <TextBox x:Name="text_url"  Margin="10" Text="http://ivi.bupt.edu.cn/hls/cctv6hd.m3u8" VerticalContentAlignment="Center"></TextBox>
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="0" FlowDirection="RightToLeft">
+            <ComboBox x:Name="text_url" SelectedIndex="0" IsEditable="True" VerticalContentAlignment="Center" ItemsSource="{Binding RtmpUrls}" DisplayMemberPath="name" SelectedValuePath="url">
+            </ComboBox>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" FlowDirection="RightToLeft">
                 <CheckBox Content="显示日志" VerticalAlignment="Center" Checked="CheckBox_Checked" Unchecked="CheckBox_Unchecked" FlowDirection="LeftToRight"></CheckBox>
-                <Button Width="100" Margin="10" Content="开启直播模式" Visibility="Collapsed" Click="Button_Click_1" x:Name="btn_mode"></Button>
-                <Button Width="100" Margin="10" Content="播放" Click="Button_Click" x:Name="btn_Play"></Button>
+                <Button Width="100" Margin="0" Content="开启直播模式" Visibility="Collapsed" Click="Button_Click_1" x:Name="btn_mode"></Button>
+                <Button Width="100" Margin="10 0" Content="播放" Click="Button_Click" x:Name="btn_Play"></Button>
             </StackPanel>
         </Grid>
         <StackPanel Orientation="Horizontal" Margin="10">
         </StackPanel>
-        <TextBox Grid.Row="1" x:Name="logBox" Margin="10" Visibility="Hidden" VerticalScrollBarVisibility="Auto"></TextBox>
-        <Image Grid.Row="1" x:Name="player" Source="{Binding PlayerImage}" Margin="10">
+        <TextBox Grid.Row="1" x:Name="logBox" Visibility="Hidden" VerticalScrollBarVisibility="Auto" Margin="5"></TextBox>
+        <Image Grid.Row="1" x:Name="player" Source="{Binding PlayerImage}" Margin="5">
 
         </Image>
     </Grid>

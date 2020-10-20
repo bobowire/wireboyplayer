@@ -23,10 +23,10 @@ namespace WireboyPlayer
             //base.Write(value);//still output to Console
             VoidAction action = delegate {
                 txtBox.AppendText(value.ToString());
-                if(txtBox.Visibility == Visibility.Visible)
-                {
-                    txtBox.ScrollToEnd();
-                }
+                //if(txtBox.Visibility == Visibility.Visible)
+                //{
+                //    txtBox.ScrollToEnd();
+                //}
             };
             txtBox.Dispatcher.BeginInvoke(action);
         }
