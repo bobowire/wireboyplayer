@@ -44,30 +44,13 @@ namespace WireboyPlayer
             this.DataContext = model;
         }
 
-        BitmapSource tempSource = null;
         public void SetImage(int pixelWidth, int pixelHeight, byte[] img, int stride, bool isTemp)
         {
             try
             {
-                this.Dispatcher.BeginInvoke(new Action(() =>
+                this.Dispatcher.Invoke(new Action(() =>
                 {
-                    //DateTime cur = DateTime.Now;
-                    if (isTemp)
-                    {
-                        tempSource = BitmapSource.Create(pixelWidth, pixelHeight, 96, 96, PixelFormats.Bgr24, null, img, stride);
-                    }
-                    else
-                    {
-                        if (tempSource != null)
-                        {
-                            model.PlayerImage = tempSource;
-                            tempSource = null;
-                        }
-                        else
-                        {
-                            model.PlayerImage = BitmapSource.Create(pixelWidth, pixelHeight, 96, 96, PixelFormats.Bgr24, null, img, stride);
-                        }
-                    }
+                    model.PlayerImage = BitmapSource.Create(pixelWidth, pixelHeight, 96, 96, PixelFormats.Bgr24, null, img, stride);
                     //Console.WriteLine($"{cur:ss:ffff}转换耗时：{DateTime.Now.Subtract(cur).TotalMilliseconds}毫秒");
                 }));
             }
@@ -306,15 +289,13 @@ namespace WireboyPlayer
             ffmpeg.av_log_set_callback(logCallback);
         }
 
-        List<VideoSt> frames = new List<VideoSt>();
-        List<AudioSt> audioFrames = new List<AudioSt>();
-        int TempBufferSize = 12;
+        List<FrameSt> frames = new List<FrameSt>();
+        int TempBufferSize = 30;
         bool isWait = true;
         private unsafe void DecodeAllFramesToImages(AVHWDeviceType HWDevice)
         {
             isWait = true;
             frames.Clear();
-            audioFrames.Clear();
             // decode all frames from url, please not it might local resorce, e.g. string url = "../../sample_mpeg4.mp4";
             //var url = "http://clips.vorwaerts-gmbh.de/big_buck_bunny.mp4"; // be advised this file holds 1440 frames
             //var url = "rtmp://58.200.131.2:1935/livetv/hunantv";
@@ -322,7 +303,7 @@ namespace WireboyPlayer
             //FileStream fs = new FileStream("E://tt.mp3", FileMode.OpenOrCreate);
             using (var vsd = new AudioStreamDecoder(url, HWDevice))
             {
-                TempBufferSize = vsd.Fps / 2;
+                //TempBufferSize = vsd.Fps / 2;
                 StartVideoThread(vsd.Fps);
                 StartAudioThread();
                 Console.WriteLine($"FPS:{vsd.Fps}");
@@ -345,11 +326,12 @@ namespace WireboyPlayer
                         while (vsd.TryDecodeNextFrame(out var frame, out bool isVideo))
                         {
                             if (curGuid != currentGuid) break;
+                            if (frames.Count >= TempBufferSize) isWait = false;
                             if (isVideo)
                             {
                                 if (!isLastMode)
                                 {
-                                    while (frames.Count >= TempBufferSize)
+                                    while (frames.Count >= TempBufferSize * 2)
                                     {
                                         if (curGuid != currentGuid) break;
                                         Thread.Sleep(1);
@@ -359,15 +341,15 @@ namespace WireboyPlayer
                                 AVFrame convertedFrame = vfc.Convert(frame);
                                 int length = convertedFrame.height * convertedFrame.linesize[0];
                                 byte[] managedArray = IntPrtToBytes((IntPtr)convertedFrame.data[0], length);
-                                VideoSt st = new VideoSt()
+                                FrameSt st = new FrameSt()
                                 {
                                     data = managedArray,
                                     width = convertedFrame.width,
                                     height = convertedFrame.height,
-                                    stride = convertedFrame.linesize[0]
+                                    stride = convertedFrame.linesize[0],
+                                    isVideo = true
                                 };
                                 frames.Add(st);
-                                if (frames.Count >= TempBufferSize) isWait = false;
                                 //stopwatch.Stop();
                                 //Console.WriteLine($"解析时间：{stopwatch.ElapsedMilliseconds}毫秒");
                                 //stopwatch.Reset();
@@ -380,7 +362,7 @@ namespace WireboyPlayer
                                 if (managedArray.Length != length)
                                     managedArray = new byte[length];
                                 Marshal.Copy((IntPtr)convertedFrame.data[0], managedArray, 0, managedArray.Length);
-                                audioFrames.Add(new AudioSt() { data = managedArray });
+                                frames.Add(new FrameSt() { data = managedArray, isVideo = false });
                             }
                         }
                     }
@@ -414,16 +396,13 @@ namespace WireboyPlayer
         }
         WaveOut waveOut;            //播放器
         BufferedWaveProvider bufferedWaveProvider;       //5s缓存区
-        class VideoSt
+        class FrameSt
         {
             public byte[] data;
             public int width;
             public int height;
             public int stride;
-        }
-        class AudioSt
-        {
-            public byte[] data;
+            public bool isVideo;
         }
         protected void StartVideoThread(int fps)
         {
@@ -433,12 +412,17 @@ namespace WireboyPlayer
                 DateTime lasthandleTime = DateTime.Now;
                 byte[] byteZero = new byte[0];
                 int dropFrameTime = 0;
-                double perFrameTime = 1000 / fps;
+                double perFrameTime = 1000 * 1.0 / fps;
                 Stopwatch stopwatch = new Stopwatch();
                 while (curGuid == currentGuid)
                 {
+                    if (frames.Count <= 1) isWait = true;
+                    while (curGuid == currentGuid && (frames.Count == 0 || !frames[0].isVideo))
+                    {
+                        Thread.Sleep(1);
+                    }
                     stopwatch.Start();
-                    VideoSt frameData = null;
+                    FrameSt frameData = null;
                     lasthandleTime = lasthandleTime.AddMilliseconds(perFrameTime);
                     bool isReCalcTime = false;
                     //时间没到时，等待
@@ -467,7 +451,6 @@ namespace WireboyPlayer
                         frameData = frames[0];
                         frames.RemoveAt(0);
                     }
-                    if (frames.Count <= 1) isWait = true;
                     if (frameData != null)
                     {
                         //Console.WriteLine($"length:{frameData.data.Count()}");
@@ -493,17 +476,22 @@ namespace WireboyPlayer
                 DateTime lasthandleTime = DateTime.Now;
                 while (curGuid == currentGuid)
                 {
+                    if (frames.Count <= 1) isWait = true;
                     do
                     {
                         Thread.Sleep(1);
-                    } while (isWait);
-                    AudioSt frameData = null;
+                    } while (isWait && frames.Count == 0);
+                    while (curGuid == currentGuid && (frames.Count == 0 || frames[0].isVideo))
+                    {
+                        Thread.Sleep(1);
+                    }
+                    FrameSt frameData = null;
                     if (curGuid != currentGuid) break;
                     lasthandleTime = DateTime.Now;
-                    if (audioFrames.Count > 0)
+                    if (frames.Count > 0)
                     {
-                        frameData = audioFrames[0];
-                        audioFrames.RemoveAt(0);
+                        frameData = frames[0];
+                        frames.RemoveAt(0);
                     }
                     if (frameData == null) continue;
                     try
